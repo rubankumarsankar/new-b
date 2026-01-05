@@ -3,7 +3,7 @@ from typing import Optional, List
 
 class Settings(BaseSettings):
     # Database
-    DATABASE_URL: str = "mysql+pymysql://root:ruban@localhost/phase1_system"
+    DATABASE_URL: str = "mysql+pymysql://root:ayati@localhost/my_database"
     
     # JWT
     SECRET_KEY: str = "tkzlyTWanFz91gorvbQG-iC1XqEC6H3o3atFJCzkbpE"

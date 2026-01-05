@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -7,6 +7,7 @@ from ...models.user import User, UserRole
 from ...core.security import verify_password, create_access_token, get_password_hash
 from ...config import settings
 from pydantic import BaseModel, EmailStr
+import secrets
 
 router = APIRouter()
 
@@ -31,6 +32,17 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    reset_code: str
+    new_password: str
+
+# Store reset codes in memory (use Redis in production)
+reset_codes = {}
+
 @router.post("/login", response_model=Token)
 def login(
     db: Session = Depends(get_db),
@@ -50,10 +62,8 @@ def login(
         raise HTTPException(status_code=400, detail="Inactive user")
     
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    # FIX: Convert user.id to string
     access_token = create_access_token(
-        data={"sub": str(user.id), "role": user.role.value},  # ← Changed user.id to str(user.id)
+        data={"sub": str(user.id), "role": user.role.value},
         expires_delta=access_token_expires
     )
     
@@ -69,20 +79,85 @@ def login(
         }
     }
 
+@router.post("/forgot-password")
+def forgot_password(
+    request: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """Generate password reset code"""
+    user = db.query(User).filter(User.email == request.email).first()
+    
+    if not user:
+        # Don't reveal if email exists or not
+        return {"message": "If the email exists, a reset code will be sent"}
+    
+    # Generate 6-digit code
+    reset_code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
+    
+    # Store with expiration (10 minutes)
+    reset_codes[request.email] = {
+        "code": reset_code,
+        "expires_at": datetime.utcnow() + timedelta(minutes=10)
+    }
+    
+    # TODO: Send email with reset code
+    # send_reset_code_email(user.email, reset_code)
+    
+    print(f"Password reset code for {request.email}: {reset_code}")  # For testing
+    
+    return {"message": "If the email exists, a reset code will be sent"}
+
+@router.post("/reset-password")
+def reset_password(
+    request: ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """Reset password using reset code"""
+    # Check if reset code exists
+    if request.email not in reset_codes:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+    
+    stored_data = reset_codes[request.email]
+    
+    # Check if code matches
+    if stored_data["code"] != request.reset_code:
+        raise HTTPException(status_code=400, detail="Invalid reset code")
+    
+    # Check if code is expired
+    if datetime.utcnow() > stored_data["expires_at"]:
+        del reset_codes[request.email]
+        raise HTTPException(status_code=400, detail="Reset code has expired")
+    
+    # Find user
+    user = db.query(User).filter(User.email == request.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Validate new password
+    if len(request.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
+    
+    # Update password
+    user.hashed_password = get_password_hash(request.new_password)
+    db.commit()
+    
+    # Remove used reset code
+    del reset_codes[request.email]
+    
+    return {"message": "Password reset successfully"}
+
 @router.post("/register", response_model=UserResponse)
 def register(
     user_data: UserCreate,
     db: Session = Depends(get_db)
 ):
     """Register new user"""
-    # Check if user exists
     if db.query(User).filter(User.email == user_data.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
     
     if db.query(User).filter(User.username == user_data.username).first():
         raise HTTPException(status_code=400, detail="Username already taken")
     
-    # Create new user
     user = User(
         email=user_data.email,
         username=user_data.username,
