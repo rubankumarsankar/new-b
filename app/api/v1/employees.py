@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import date
@@ -8,6 +8,7 @@ from ...database import get_db
 from ...models.employee import Employee
 from ...models.user import User, UserRole
 from ...core.security import get_password_hash, verify_password
+from ...services.email import email_service
 from ..deps import get_current_user
 from pydantic import BaseModel, EmailStr
 
@@ -15,7 +16,6 @@ router = APIRouter()
 
 def generate_random_password(length=12):
     """Generate a secure random password"""
-    # At least one uppercase, one lowercase, one digit, one special char
     uppercase = string.ascii_uppercase
     lowercase = string.ascii_lowercase
     digits = string.digits
@@ -89,7 +89,7 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 @router.get("/", response_model=List[EmployeeResponse])
-def get_employees(
+async def get_employees(
     department: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -129,7 +129,7 @@ def get_employees(
     return result
 
 @router.get("/me", response_model=EmployeeResponse)
-def get_my_profile(
+async def get_my_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -156,7 +156,7 @@ def get_my_profile(
     }
 
 @router.get("/{employee_id}", response_model=EmployeeResponse)
-def get_employee(
+async def get_employee(
     employee_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -190,8 +190,9 @@ def get_employee(
     }
 
 @router.post("/", response_model=EmployeeCreateResponse)
-def create_employee(
+async def create_employee(
     employee_data: EmployeeCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -248,10 +249,18 @@ def create_employee(
     db.refresh(employee)
     db.refresh(user)
     
-    # TODO: Send welcome email with credentials
-    # send_welcome_email(user.email, username, temp_password)
+    # Send welcome email in background
+    employee_name = f"{employee.first_name} {employee.last_name}"
+    background_tasks.add_task(
+        email_service.send_welcome_email,
+        name=employee_name,
+        email=user.email,
+        username=username,
+        password=temp_password
+    )
     
     print(f"✅ Employee created - Username: {username}, Password: {temp_password}")
+    print(f"📧 Welcome email queued for {user.email}")
     
     return {
         "id": employee.id,
@@ -272,7 +281,7 @@ def create_employee(
     }
 
 @router.put("/me", response_model=EmployeeResponse)
-def update_my_profile(
+async def update_my_profile(
     employee_data: EmployeeUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -332,7 +341,7 @@ def update_my_profile(
     }
 
 @router.post("/me/change-password")
-def change_my_password(
+async def change_my_password(
     password_data: ChangePasswordRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -363,7 +372,7 @@ def change_my_password(
     return {"message": "Password changed successfully"}
 
 @router.put("/{employee_id}", response_model=EmployeeResponse)
-def update_employee(
+async def update_employee(
     employee_id: int,
     employee_data: EmployeeUpdate,
     db: Session = Depends(get_db),
@@ -429,8 +438,9 @@ def update_employee(
     }
 
 @router.post("/{employee_id}/reset-password")
-def reset_employee_password(
+async def reset_employee_password(
     employee_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -453,10 +463,18 @@ def reset_employee_password(
     user.hashed_password = get_password_hash(new_password)
     db.commit()
     
-    # TODO: Send email with new password
-    # send_password_reset_email(user.email, new_password)
+    # Send password reset email in background
+    employee_name = f"{employee.first_name} {employee.last_name}"
+    background_tasks.add_task(
+        email_service.send_password_reset_email,
+        name=employee_name,
+        email=user.email,
+        username=user.username,
+        password=new_password
+    )
     
     print(f"✅ Password reset for {user.username}: {new_password}")
+    print(f"📧 Password reset email queued for {user.email}")
     
     return {
         "message": "Password reset successfully",
@@ -465,7 +483,7 @@ def reset_employee_password(
     }
 
 @router.delete("/{employee_id}")
-def delete_employee(
+async def delete_employee(
     employee_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)

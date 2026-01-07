@@ -20,6 +20,16 @@ class Settings(BaseSettings):
     OFFICE_END_TIME: str = "18:30"
     GRACE_PERIOD_MINUTES: int = 15
     
+    # Email Configuration
+    SMTP_HOST: str = "mail.ayatiworks.com"
+    SMTP_PORT: int = 465
+    SMTP_USER: str = "emailsmtp@ayatiworks.com"  # Your email
+    SMTP_PASSWORD: str = "hYd@W,$nwNjC"  # Your email password or app password
+    SMTP_FROM_EMAIL: str = "emailsmtp@ayatiworks.com"  # Sender email
+    SMTP_FROM_NAME: str = " HR Team"
+    SMTP_TLS: bool = True
+    SMTP_SSL: bool = False
+    
     # Teams Integration
     TEAMS_WEBHOOK_URL: Optional[str] = None
     
