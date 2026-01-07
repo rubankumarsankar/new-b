@@ -14,3 +14,34 @@ python-dotenv==1.0.0
 httpx==0.26.0
 email-validator==2.1.0
 python-dateutil==2.8.2
+
+
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# Database & ORM
+sqlalchemy==2.0.25
+alembic==1.13.1
+pymysql==1.1.0
+
+# Security & Authentication
+cryptography==42.0.0
+python-jose[cryptography]==3.3.0
+bcrypt==4.0.1
+passlib==1.7.4
+
+# Request handling & validation
+python-multipart==0.0.6
+email-validator==2.1.0
+
+# Configuration & Environment
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# HTTP & Utilities
+httpx==0.26.0
+python-dateutil==2.8.2
+
+# Email (Async)
+aiosmtplib
